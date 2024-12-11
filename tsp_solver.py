@@ -92,18 +92,18 @@ def find_optimal_route(graph, start_node, delivery_points):
 
 # Function to plot the graph with improved spacing and curved roads
 def plot_graph(graph, pos=None):
-    fig, ax = plt.subplots(figsize=(16, 12))  # Increased figure size for better layout
+    fig, ax = plt.subplots(figsize=(16, 12))  
 
     # Use spring layout with a higher k-value to increase spacing
     if pos is None:
-        pos = nx.spring_layout(graph, seed=42, k=1.2, iterations=50)  # Increased k-value to spread nodes more
+        pos = nx.spring_layout(graph, seed=42, k=1.2, iterations=50)  
 
     # Draw nodes with larger size and distinctive color
     nx.draw_networkx_nodes(
         graph, pos,
         node_color='skyblue',
         node_size=800,
-        edgecolors='black',  # Add border to nodes for better visibility
+        edgecolors='black',  
         ax=ax
     )
 
@@ -111,18 +111,18 @@ def plot_graph(graph, pos=None):
     edge_weights = nx.get_edge_attributes(graph, 'weight')
     edges = graph.edges(data=True)
     edge_colors = [data['weight'] for _, _, data in edges]
-    edge_widths = [data['weight'] / 10 for _, _, data in edges]  # Scale edge widths for better visualization
+    edge_widths = [data['weight'] / 10 for _, _, data in edges]  
 
     # Use a bez ier curve for edges to make them curved
     nx.draw_networkx_edges(
         graph, pos,
         edge_color=edge_colors,
-        edge_cmap=plt.cm.viridis,  # Use colormap for edge colors
+        edge_cmap=plt.cm.viridis,  
         width=edge_widths,
         alpha=0.8,
-        style='-',  # Solid edges
+        style='-',  
         ax=ax,
-        connectionstyle='arc3,rad=0.1'  # Apply curvature to the edges
+        connectionstyle='arc3,rad=0.1' 
     )
 
     # Add edge labels to show weights (distance in km and delay in min)
@@ -148,15 +148,15 @@ def plot_graph(graph, pos=None):
     plt.tight_layout()
     plt.show()
 
-    return pos  # Return the positions to be used in the animation
+    return pos  
 
 # Function to create animated visualization of the optimal route
 def create_animated_route_visualization(graph, route, total_distance, total_time, pos):
-    fig, ax = plt.subplots(figsize=(16, 10))  # Increased figure size
+    fig, ax = plt.subplots(figsize=(16, 10))  
 
     def update(frame):
         ax.clear()
-        plt.title(f"Optimal Delivery Route - Total Time: {total_time} min", fontsize=16)
+        ax.set_title(f"Optimal Delivery Route - Total Time: {total_time} min", fontsize=16, y=1.05)  
 
         # Re-plot the graph with all the details
         nx.draw_networkx_nodes(graph, pos, node_color='lightgray', node_size=500, ax=ax)
@@ -193,7 +193,7 @@ def create_animated_route_visualization(graph, route, total_distance, total_time
     anim = animation.FuncAnimation(
         fig, update,
         frames=len(route) - 1,
-        interval=3000,  # 3 seconds between frames
+        interval=3000,  
         repeat=False
     )
 
@@ -201,12 +201,11 @@ def create_animated_route_visualization(graph, route, total_distance, total_time
     plt.show()
 
 # Main function
-# Main function
 def main():
     G = create_fixed_graph()
 
     print("\nPlotting the road network...")
-    pos = plot_graph(G)  # Save the positions for consistent use in animation
+    pos = plot_graph(G) 
 
     while True:
         start = int(input("Enter the start intersection: "))
@@ -247,7 +246,7 @@ def main():
                 else:
                     print(f"No route found for delivery to {delivery}.")
 
-        cont = input("Do you want to try another route? (y/n): ")
+        cont = input("\nDo you want to try another route? (y/n): ")
         if cont.lower() != 'y':
             print("Exiting the program... Good Bye!")
             break
