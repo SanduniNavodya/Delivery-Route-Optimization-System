@@ -1,15 +1,14 @@
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import networkx as nx
-import os
+import matplotlib.animation as animation
+import heapq
+import itertools
 
-# Fixed graph setup
+# Function to create the graph with unidirectional roads and traffic delays
 def create_fixed_graph():
-    # Define the fixed set of intersections (nodes)
-    G = nx.complete_graph(5, nx.DiGraph())  # 5 intersections for example
-    
-    # Predefined edge data (for example, distances and conditions)
-    # Here, each tuple is (u, v, distance, traffic_delay)
+    G = nx.DiGraph()  # Directed graph for unidirectional roads
+
+    # Define the intersections and roads with traffic delays
     edges = [
         (0, 1, 10, 5),
         (0, 2, 15, 10),
@@ -22,133 +21,216 @@ def create_fixed_graph():
         (2, 4, 12, 6),
         (3, 4, 10, 5)
     ]
-    
+
     for u, v, distance, traffic_delay in edges:
-        # Set attributes for the forward edge
-        G[u][v]['weight'] = distance + traffic_delay
-        G[u][v]['distance'] = distance  # Ensure 'distance' attribute is set
-        G[u][v]['traffic_delay'] = traffic_delay  # Ensure 'traffic_delay' attribute is set
-        G[u][v]['vehicle_type'] = "car"
-        
-        # For directed graph, manually add reverse edge with the same attributes if not already added
-        if not G.has_edge(v, u):
-            G.add_edge(v, u, weight=distance + traffic_delay,
-                       distance=distance, traffic_delay=traffic_delay,
-                       vehicle_type="car")
-        else:
-            # Ensure reverse edge has the same attributes
-            G[v][u]['weight'] = distance + traffic_delay
-            G[v][u]['distance'] = distance
-            G[v][u]['traffic_delay'] = traffic_delay
-            G[v][u]['vehicle_type'] = "car"
-    
+        G.add_edge(u, v, weight=distance + traffic_delay, distance=distance, traffic_delay=traffic_delay)
+
     return G
 
-# TSP Nearest Neighbor Heuristic
-def tsp_nearest_neighbor(G, start_node):
-    tour = [start_node]
-    total_distance = 0
-    visited = {start_node}
-    current_node = start_node
-    while len(visited) < len(G.nodes()):
-        min_dist = float('inf')
-        next_node = None
-        for neighbor in G.neighbors(current_node):
-            if neighbor not in visited:
-                dist = G[current_node][neighbor]["weight"]
-                if dist < min_dist:
-                    min_dist = dist
-                    next_node = neighbor
-        visited.add(next_node)
-        tour.append(next_node)
-        total_distance += min_dist
-        current_node = next_node
-    total_distance += G[tour[-1]][tour[0]]["weight"]
-    tour.append(tour[0])  # Complete the cycle
-    return tour, total_distance
+# Dijkstra's Algorithm to find the shortest path from source to all other nodes
+def dijkstra(graph, source):
+    distances = {node: float('inf') for node in graph.nodes()}
+    distances[source] = 0
+    previous_nodes = {node: None for node in graph.nodes()}
+    pq = [(0, source)]  # (distance, node)
 
-# Plot the fixed graph
-def plot_fixed_graph(G):
-    plt.figure(figsize=(16, 12))
-    pos = nx.kamada_kawai_layout(G)
-    
+    while pq:
+        current_distance, current_node = heapq.heappop(pq)
+
+        if current_distance > distances[current_node]:
+            continue
+
+        for neighbor in graph.neighbors(current_node):
+            edge_weight = graph[current_node][neighbor]['weight']
+            new_distance = current_distance + edge_weight
+
+            if new_distance < distances[neighbor]:
+                distances[neighbor] = new_distance
+                previous_nodes[neighbor] = current_node
+                heapq.heappush(pq, (new_distance, neighbor))
+
+    return distances, previous_nodes
+
+# Function to find the shortest path between two nodes using Dijkstra
+def find_path_with_distance(graph, source, target):
+    distances, previous_nodes = dijkstra(graph, source)
+
+    if distances[target] == float('inf'):
+        return None, float('inf')
+
+    path = []
+    current_node = target
+    while current_node is not None:
+        path.append(current_node)
+        current_node = previous_nodes[current_node]
+    path.reverse()
+
+    return path, distances[target]
+
+# Function to calculate the total time for a given route (considering both distance and traffic delay)
+def calculate_route_time(graph, route):
+    total_time = 0
+    for i in range(len(route) - 1):
+        _, time = find_path_with_distance(graph, route[i], route[i + 1])
+        total_time += time
+    return total_time
+
+# Greedy nearest neighbor heuristic for finding an approximate TSP route
+def find_optimal_route(graph, start_node, delivery_points):
+    best_route = None
+    best_time = float('inf')
+    all_routes = itertools.permutations(delivery_points)
+
+    for route in all_routes:
+        route_with_start = [start_node] + list(route)
+        route_time = calculate_route_time(graph, route_with_start)
+        if route_time < best_time:
+            best_time = route_time
+            best_route = route_with_start
+
+    return best_route, best_time
+
+# Function to plot the graph with improved spacing and curved roads
+def plot_graph(graph, pos=None):
+    fig, ax = plt.subplots(figsize=(16, 12))  # Increased figure size for better layout
+
+    # Use spring layout with a higher k-value to increase spacing
+    if pos is None:
+        pos = nx.spring_layout(graph, seed=42, k=1.0, iterations=50)  # Increased k-value to spread nodes more
+
+    # Draw nodes with larger size and distinctive color
     nx.draw_networkx_nodes(
-        G, pos, node_size=700, 
-        node_color='lightblue', 
-        edgecolors='black', 
-        linewidths=2
+        graph, pos,
+        node_color='skyblue',
+        node_size=800,
+        edgecolors='black',  # Add border to nodes for better visibility
+        ax=ax
     )
 
-    curved_rad = 0.1
-    # No more damaged roads, so we can simplify
-    undamaged_edges = [(u, v) for u, v, d in G.edges(data=True)]
+    # Draw edges with varying thickness and color based on weights
+    edge_weights = nx.get_edge_attributes(graph, 'weight')
+    edges = graph.edges(data=True)
+    edge_colors = [data['weight'] for _, _, data in edges]
+    edge_widths = [data['weight'] / 10 for _, _, data in edges]  # Scale edge widths for better visualization
 
+    # Use a bezier curve for edges to make them curved
     nx.draw_networkx_edges(
-        G, pos, edgelist=undamaged_edges, 
-        edge_color='green', width=2, 
-        connectionstyle=f'arc3,rad={curved_rad}', 
-        arrows=True, arrowstyle='-|>', arrowsize=20
+        graph, pos,
+        edge_color=edge_colors,
+        edge_cmap=plt.cm.viridis,  # Use colormap for edge colors
+        width=edge_widths,
+        alpha=0.8,
+        style='-',  # Solid edges
+        ax=ax,
+        connectionstyle='arc3,rad=0.1'  # Apply curvature to the edges
     )
 
-    nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
+    # Add edge labels to show weights (distance + traffic delay)
+    edge_labels = {
+        (u, v): f"D:{data['distance']} T:{data['traffic_delay']}"
+        for u, v, data in graph.edges(data=True)
+    }
+    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=10, ax=ax)
 
-    # Ensure that the edge labels reference the correct attributes
-    edge_labels = {}
-    for u, v, d in G.edges(data=True):
-        if 'distance' in d and 'traffic_delay' in d:
-            edge_labels[(u, v)] = f"{d['distance']}km\n{d['traffic_delay']}min"
+    # Add labels to nodes
+    nx.draw_networkx_labels(
+        graph, pos,
+        font_size=12,
+        font_color='black',
+        font_weight='bold',
+        ax=ax
+    )
 
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
-
-    # Legend for the roads
-    legend_elements = [
-        mpatches.Patch(color='green', label='Roads')
-    ]
-    plt.legend(handles=legend_elements, loc='upper left')
-
-    plt.title("City Road Network", pad=20, size=16)
-    plt.axis('off')
-
-    output_dir = 'assets'
-    os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(f'{output_dir}/city_road_graph.png', dpi=300, bbox_inches='tight')
+    # Customize plot appearance
+    plt.title("City Road Network with Traffic Information", fontsize=16)
+    plt.axis('off')  # Turn off axis for better aesthetics
+    plt.colorbar(plt.cm.ScalarMappable(cmap=plt.cm.viridis), ax=ax, label="Road Weight (Distance + Delay)")
+    plt.tight_layout()
     plt.show()
 
-# Function to get starting and ending nodes (Delivery points)
-def get_delivery_points():
+    return pos  # Return the positions to be used in the animation
+
+# Function to create animated visualization of the optimal route
+def create_animated_route_visualization(graph, route, total_distance, pos):
+    fig, ax = plt.subplots(figsize=(16, 10))  # Increased figure size
+
+    def update(frame):
+        ax.clear()
+        plt.title("Optimal Delivery Route", fontsize=16)
+
+        # Re-plot the graph with all the details
+        nx.draw_networkx_nodes(graph, pos, node_color='lightgray', node_size=500, ax=ax)
+        nx.draw_networkx_edges(graph, pos, edge_color='gray', style='dashed', ax=ax)
+
+        edge_labels = {(u, v): graph[u][v]['weight'] for (u, v) in graph.edges()}
+        nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, ax=ax)
+        nx.draw_networkx_labels(graph, pos, ax=ax)
+
+        # Draw edges for the current frame
+        for i in range(frame + 1):
+            start, end = route[i], route[i + 1]
+            path, distance = find_path_with_distance(graph, start, end)
+            path_edges = list(zip(path[:-1], path[1:]))
+
+            # Draw the edges for the current route
+            nx.draw_networkx_edges(
+                graph, pos,
+                edgelist=path_edges,
+                edge_color='blue',
+                width=3,
+                ax=ax
+            )
+
+            nx.draw_networkx_nodes(
+                graph, pos,
+                nodelist=path,
+                node_color='blue',
+                node_size=500,
+                ax=ax
+            )
+
+    anim = animation.FuncAnimation(
+        fig, update,
+        frames=len(route) - 1,
+        interval=3000,  # 3 seconds between frames
+        repeat=False
+    )
+
+    plt.tight_layout()
+    plt.show()
+
+# Main function
+def main():
+    G = create_fixed_graph()
+
+    print("\nPlotting the road network...")
+    pos = plot_graph(G)  # Save the positions for consistent use in animation
+
     start = int(input("Enter the start intersection: "))
+
+    # Check if start node is valid
+    if start not in G.nodes:
+        print(f"Invalid start node: {start}. Please enter a valid node.")
+        return
+
     deliveries = []
     while True:
         end = int(input("Enter a delivery intersection (or -1 to stop): "))
         if end == -1:
             break
-        deliveries.append(end)
-    return start, deliveries
+        if end not in G.nodes:
+            print(f"Invalid delivery intersection: {end}. Please enter a valid node.")
+        else:
+            deliveries.append(end)
 
-def main():
-    # Create the fixed graph
-    G = create_fixed_graph()
+    optimal_route, total_distance = find_optimal_route(G, start, deliveries)
 
-    # Plot the graph
-    print("\nPlotting the road network...")
-    plot_fixed_graph(G)
-
-    # Get delivery points and start node
-    start, deliveries = get_delivery_points()
-
-    # For each delivery point, compute the TSP path
-    print(f"\nFinding the shortest TSP route from Intersection {start} to the delivery points...")
-    tsp_route, total_distance = tsp_nearest_neighbor(G, start)
-
-    # Output the results
-    print(f"\nBest route from Intersection {start} to the delivery points:")
-    print(f"Path: {' → '.join(map(str, tsp_route))}")
-    print(f"Total estimated time: {total_distance:.1f} minutes")
-    
-    # Ask if the user wants to find another route
-    choice = input("\nDo you want to find another route? (yes/no): ").strip().lower()
-    if choice != 'yes':
-        print("\nExiting the program. Goodbye!")
+    if optimal_route:
+        print(f"\nOptimal Route: {optimal_route}")
+        print(f"Total Distance: {total_distance}")
+        create_animated_route_visualization(G, optimal_route, total_distance, pos)
+    else:
+        print("No valid route found.")
 
 if __name__ == "__main__":
     main()
