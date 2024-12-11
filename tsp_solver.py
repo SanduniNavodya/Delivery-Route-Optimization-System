@@ -96,7 +96,7 @@ def plot_graph(graph, pos=None):
 
     # Use spring layout with a higher k-value to increase spacing
     if pos is None:
-        pos = nx.spring_layout(graph, seed=42, k=1.0, iterations=50)  # Increased k-value to spread nodes more
+        pos = nx.spring_layout(graph, seed=42, k=1.2, iterations=50)  # Increased k-value to spread nodes more
 
     # Draw nodes with larger size and distinctive color
     nx.draw_networkx_nodes(
@@ -113,7 +113,7 @@ def plot_graph(graph, pos=None):
     edge_colors = [data['weight'] for _, _, data in edges]
     edge_widths = [data['weight'] / 10 for _, _, data in edges]  # Scale edge widths for better visualization
 
-    # Use a bezier curve for edges to make them curved
+    # Use a bez ier curve for edges to make them curved
     nx.draw_networkx_edges(
         graph, pos,
         edge_color=edge_colors,
@@ -125,9 +125,9 @@ def plot_graph(graph, pos=None):
         connectionstyle='arc3,rad=0.1'  # Apply curvature to the edges
     )
 
-    # Add edge labels to show weights (distance + traffic delay)
+    # Add edge labels to show weights (distance in km and delay in min)
     edge_labels = {
-        (u, v): f"D:{data['distance']} T:{data['traffic_delay']}"
+        (u, v): f"D: {data['distance']} km T: {data['traffic_delay']} min"
         for u, v, data in graph.edges(data=True)
     }
     nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=10, ax=ax)
@@ -151,18 +151,19 @@ def plot_graph(graph, pos=None):
     return pos  # Return the positions to be used in the animation
 
 # Function to create animated visualization of the optimal route
-def create_animated_route_visualization(graph, route, total_distance, pos):
+def create_animated_route_visualization(graph, route, total_distance, total_time, pos):
     fig, ax = plt.subplots(figsize=(16, 10))  # Increased figure size
 
     def update(frame):
         ax.clear()
-        plt.title("Optimal Delivery Route", fontsize=16)
+        plt.title(f"Optimal Delivery Route - Total Time: {total_time} min", fontsize=16)
 
         # Re-plot the graph with all the details
         nx.draw_networkx_nodes(graph, pos, node_color='lightgray', node_size=500, ax=ax)
         nx.draw_networkx_edges(graph, pos, edge_color='gray', style='dashed', ax=ax)
 
-        edge_labels = {(u, v): graph[u][v]['weight'] for (u, v) in graph.edges()}
+        edge_labels = {(u, v): f"D: {graph[u][v]['distance']} km T: {graph[u][v]['traffic_delay']} min" 
+                       for (u, v) in graph.edges()}
         nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, ax=ax)
         nx.draw_networkx_labels(graph, pos, ax=ax)
 
@@ -200,37 +201,59 @@ def create_animated_route_visualization(graph, route, total_distance, pos):
     plt.show()
 
 # Main function
+# Main function
 def main():
     G = create_fixed_graph()
 
     print("\nPlotting the road network...")
     pos = plot_graph(G)  # Save the positions for consistent use in animation
 
-    start = int(input("Enter the start intersection: "))
-
-    # Check if start node is valid
-    if start not in G.nodes:
-        print(f"Invalid start node: {start}. Please enter a valid node.")
-        return
-
-    deliveries = []
     while True:
-        end = int(input("Enter a delivery intersection (or -1 to stop): "))
-        if end == -1:
-            break
-        if end not in G.nodes:
-            print(f"Invalid delivery intersection: {end}. Please enter a valid node.")
+        start = int(input("Enter the start intersection: "))
+
+        # Check if start node is valid
+        if start not in G.nodes:
+            print(f"Invalid start node: {start}. Please enter a valid node.")
+            continue
+
+        deliveries = []
+        while True:
+            end = int(input("Enter a delivery intersection (or -1 to stop): "))
+            if end == -1:
+                break
+            if end not in G.nodes:
+                print(f"Invalid delivery intersection: {end}. Please enter a valid node.")
+            else:
+                deliveries.append(end)
+
+        optimal_route, total_distance = find_optimal_route(G, start, deliveries)
+
+        if optimal_route is not None and total_distance is not None:
+            total_time = calculate_route_time(G, optimal_route)
+            print(f"\nOptimal Route: {optimal_route}")
+            print(f"Total Distance: {total_distance} km")
+            print(f"Total Time: {total_time} minutes")
+            create_animated_route_visualization(G, optimal_route, total_distance, total_time, pos)
         else:
-            deliveries.append(end)
+            print("No valid route found. Suggesting route for one delivery point...")
+            for delivery in deliveries:
+                route, distance = find_path_with_distance(G, start, delivery)
+                if route:
+                    time = calculate_route_time(G, route)
+                    print(f"Suggested Route for delivery to {delivery}: {route}")
+                    print(f"Total Distance: {distance} km")
+                    print(f"Total Time: {time} minutes")
+                    create_animated_route_visualization(G, route, distance, time, pos)
+                else:
+                    print(f"No route found for delivery to {delivery}.")
 
-    optimal_route, total_distance = find_optimal_route(G, start, deliveries)
+        cont = input("Do you want to try another route? (y/n): ")
+        if cont.lower() != 'y':
+            print("Exiting the program... Good Bye!")
+            break
 
-    if optimal_route:
-        print(f"\nOptimal Route: {optimal_route}")
-        print(f"Total Distance: {total_distance}")
-        create_animated_route_visualization(G, optimal_route, total_distance, pos)
-    else:
-        print("No valid route found.")
 
+
+# Run the main function
 if __name__ == "__main__":
     main()
